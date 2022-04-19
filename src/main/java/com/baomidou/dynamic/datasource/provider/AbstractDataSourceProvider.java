@@ -44,7 +44,8 @@ public abstract class AbstractDataSourceProvider implements DynamicDataSourcePro
                 poolName = dsName;
             }
             dataSourceProperty.setPoolName(poolName);
-            dataSourceMap.put(dsName, defaultDataSourceCreator.createDataSource(dataSourceProperty));
+            DataSource dataSource = defaultDataSourceCreator.createDataSource(dataSourceProperty);
+            dataSourceMap.put(dsName, dataSource);
         }
         return dataSourceMap;
     }

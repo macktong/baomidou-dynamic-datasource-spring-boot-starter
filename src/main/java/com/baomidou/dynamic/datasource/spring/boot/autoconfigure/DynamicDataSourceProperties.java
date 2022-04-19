@@ -85,6 +85,14 @@ public class DynamicDataSourceProperties {
      */
     private Class<? extends DynamicDataSourceStrategy> strategy = LoadBalanceDynamicDataSourceStrategy.class;
     /**
+     * 是否开启验证
+     */
+    private Boolean valid = false;
+    /**
+     * 数据源连接错误是否继续
+     */
+    private Boolean continueOnValidError = false;
+    /**
      * Druid全局参数配置
      */
     @NestedConfigurationProperty

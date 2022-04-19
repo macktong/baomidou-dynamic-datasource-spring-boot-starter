@@ -22,6 +22,7 @@ import com.baomidou.dynamic.datasource.spring.boot.autoconfigure.DataSourcePrope
 import com.baomidou.dynamic.datasource.spring.boot.autoconfigure.DatasourceInitProperties;
 import com.baomidou.dynamic.datasource.spring.boot.autoconfigure.DynamicDataSourceProperties;
 import com.baomidou.dynamic.datasource.support.ScriptRunner;
+import com.baomidou.dynamic.datasource.toolkit.DynamicDataSourceUtils;
 import com.p6spy.engine.spy.P6DataSource;
 import io.seata.rm.datasource.DataSourceProxy;
 import io.seata.rm.datasource.xa.DataSourceProxyXA;
@@ -30,6 +31,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.util.StringUtils;
 
 import javax.sql.DataSource;
+import java.sql.SQLException;
 
 /**
  * 抽象连接池创建器
@@ -56,6 +58,15 @@ public abstract class AbstractDataSourceCreator implements DataSourceCreator {
 
     @Override
     public DataSource createDataSource(DataSourceProperty dataSourceProperty) {
+        Boolean valid = properties.getValid();
+        Boolean continueOnValidError = properties.getContinueOnValidError();
+        if (valid) {
+            try {
+                DynamicDataSourceUtils.valid(dataSourceProperty.getUrl(), dataSourceProperty.getUsername(), dataSourceProperty.getPassword());
+            } catch (SQLException e) {
+
+            }
+        }
         String publicKey = dataSourceProperty.getPublicKey();
         if (StringUtils.isEmpty(publicKey)) {
             publicKey = properties.getPublicKey();
