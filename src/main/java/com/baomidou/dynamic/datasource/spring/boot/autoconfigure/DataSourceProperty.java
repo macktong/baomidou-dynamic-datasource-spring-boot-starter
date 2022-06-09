@@ -17,7 +17,6 @@ package com.baomidou.dynamic.datasource.spring.boot.autoconfigure;
 
 import com.baomidou.dynamic.datasource.spring.boot.autoconfigure.beecp.BeeCpConfig;
 import com.baomidou.dynamic.datasource.spring.boot.autoconfigure.dbcp2.Dbcp2Config;
-import com.baomidou.dynamic.datasource.spring.boot.autoconfigure.druid.DruidConfig;
 import com.baomidou.dynamic.datasource.spring.boot.autoconfigure.hikari.HikariCpConfig;
 import lombok.Data;
 import lombok.experimental.Accessors;
@@ -25,6 +24,8 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.context.properties.NestedConfigurationProperty;
 
 import javax.sql.DataSource;
+import java.util.HashMap;
+import java.util.Map;
 
 /**
  * @author TaoYu
@@ -80,11 +81,8 @@ public class DataSourceProperty {
      */
     @NestedConfigurationProperty
     private DatasourceInitProperties init = new DatasourceInitProperties();
-    /**
-     * Druid参数配置
-     */
-    @NestedConfigurationProperty
-    private DruidConfig druid = new DruidConfig();
+
+    private Map<String, Object> druid = new HashMap<>();
     /**
      * HikariCp参数配置
      */

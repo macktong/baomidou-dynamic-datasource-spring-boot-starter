@@ -25,21 +25,22 @@ import com.alibaba.druid.wall.WallConfig;
 import com.alibaba.druid.wall.WallFilter;
 import com.baomidou.dynamic.datasource.exception.ErrorCreateDataSourceException;
 import com.baomidou.dynamic.datasource.spring.boot.autoconfigure.DataSourceProperty;
-import com.baomidou.dynamic.datasource.spring.boot.autoconfigure.druid.DruidConfig;
 import com.baomidou.dynamic.datasource.spring.boot.autoconfigure.druid.DruidLogConfigUtil;
 import com.baomidou.dynamic.datasource.spring.boot.autoconfigure.druid.DruidStatConfigUtil;
 import com.baomidou.dynamic.datasource.spring.boot.autoconfigure.druid.DruidWallConfigUtil;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.beans.factory.InitializingBean;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.ApplicationContext;
+import org.springframework.util.ClassUtils;
 import org.springframework.util.StringUtils;
 
 import javax.sql.DataSource;
+import java.lang.reflect.Method;
 import java.sql.SQLException;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
-import java.util.Properties;
+import java.util.Map;
 
 import static com.baomidou.dynamic.datasource.support.DdConstants.DRUID_DATASOURCE;
 
@@ -50,12 +51,29 @@ import static com.baomidou.dynamic.datasource.support.DdConstants.DRUID_DATASOUR
  * @since 2020/1/21
  */
 @Slf4j
-public class DruidDataSourceCreator extends AbstractDataSourceCreator implements DataSourceCreator, InitializingBean {
+public class DruidDataSourceCreator extends AbstractDataSourceCreator implements DataSourceCreator {
+
+    private static final Map<String, Method> SETTER_METHODS = new HashMap<>();
+
+    static {
+        Method[] methods = DruidDataSource.class.getMethods();
+        for (Method method : methods) {
+            String methodName = method.getName();
+            if (methodName.startsWith("set")) {
+                Class<?>[] parameterTypes = method.getParameterTypes();
+                Class<?> parameterType = parameterTypes[0];
+                if (String.class == parameterType || ClassUtils.isPrimitiveOrWrapper(parameterType)) {
+                    String realField = methodName.substring(3);
+                    SETTER_METHODS.put(realField.toUpperCase(), method);
+                } else {
+
+                }
+            }
+        }
+    }
 
     @Autowired(required = false)
     private ApplicationContext applicationContext;
-
-    private DruidConfig gConfig;
 
     @Override
     public DataSource doCreateDataSource(DataSourceProperty dataSourceProperty) {
@@ -68,17 +86,37 @@ public class DruidDataSourceCreator extends AbstractDataSourceCreator implements
         if (!StringUtils.isEmpty(driverClassName)) {
             dataSource.setDriverClassName(driverClassName);
         }
-        DruidConfig config = dataSourceProperty.getDruid();
-        Properties properties = config.toProperties(gConfig);
-
-        List<Filter> proxyFilters = this.initFilters(dataSourceProperty, properties.getProperty("druid.filters"));
+        Map<String, Object> druidConfig = properties.getDruid();
+        Map<String, Object> itemDruidConfig = dataSourceProperty.getDruid();
+        druidConfig.putAll(itemDruidConfig);
+        Map<String, Map> filterMap = new HashMap<>();
+        for (Map.Entry<String, Object> entry : druidConfig.entrySet()) {
+            String key = entry.getKey();
+            Object value = entry.getValue();
+            if (value instanceof Map) {
+                filterMap.put(key, (Map) value);
+                continue;
+            }
+            String s = key.replaceAll("-", "").toUpperCase();
+            Method method = SETTER_METHODS.get(s);
+            if (method != null) {
+                try {
+                    method.invoke(dataSource, value);
+                    log.debug("druid 设置参数[{}] 值[{}] 成功", key, value);
+                } catch (Exception e) {
+                    log.warn("druid 设置参数[{}] 值[{}] 失败", key, value);
+                }
+            } else {
+                log.warn("druid 设置参数[{}] 值[{}] 不存在此参数", key, value);
+            }
+        }
+//
+        String filters = (String) properties.getDruid().get("filters");
+        List<Filter> proxyFilters = this.initFilters(dataSourceProperty, filters);
         dataSource.setProxyFilters(proxyFilters);
-
-        dataSource.configFromPropety(properties);
-        //连接参数单独设置
-        dataSource.setConnectProperties(config.getConnectionProperties());
-        //设置druid内置properties不支持的的参数
-        this.setParam(dataSource, config);
+//
+//        //连接参数单独设置
+//        dataSource.setConnectProperties(config.getConnectionProperties());
 
         if (Boolean.FALSE.equals(dataSourceProperty.getLazy())) {
             try {
@@ -95,122 +133,46 @@ public class DruidDataSourceCreator extends AbstractDataSourceCreator implements
         if (!StringUtils.isEmpty(filters)) {
             String[] filterItems = filters.split(",");
             for (String filter : filterItems) {
+                Map<String, Object> itemMap = (Map<String, Object>) dataSourceProperty.getDruid().get(filter);
+                Map<String, Object> globalMap = (Map<String, Object>) properties.getDruid().get(filter);
                 switch (filter) {
                     case "stat":
-                        proxyFilters.add(DruidStatConfigUtil.toStatFilter(dataSourceProperty.getDruid().getStat(), gConfig.getStat()));
+                        proxyFilters.add(DruidStatConfigUtil.toStatFilter(itemMap, globalMap));
                         break;
                     case "wall":
-                        WallConfig wallConfig = DruidWallConfigUtil.toWallConfig(dataSourceProperty.getDruid().getWall(), gConfig.getWall());
+                        WallConfig wallConfig = DruidWallConfigUtil.toWallConfig(itemMap, globalMap);
                         WallFilter wallFilter = new WallFilter();
                         wallFilter.setConfig(wallConfig);
                         proxyFilters.add(wallFilter);
                         break;
                     case "slf4j":
-                        proxyFilters.add(DruidLogConfigUtil.initFilter(Slf4jLogFilter.class, dataSourceProperty.getDruid().getSlf4j(), gConfig.getSlf4j()));
+                        proxyFilters.add(DruidLogConfigUtil.initFilter(Slf4jLogFilter.class, itemMap, globalMap));
                         break;
                     case "commons-log":
-                        proxyFilters.add(DruidLogConfigUtil.initFilter(CommonsLogFilter.class, dataSourceProperty.getDruid().getCommonsLog(), gConfig.getCommonsLog()));
+                        proxyFilters.add(DruidLogConfigUtil.initFilter(CommonsLogFilter.class, itemMap, globalMap));
                         break;
                     case "log4j":
-                        proxyFilters.add(DruidLogConfigUtil.initFilter(Log4jFilter.class, dataSourceProperty.getDruid().getLog4j(), gConfig.getLog4j()));
+                        proxyFilters.add(DruidLogConfigUtil.initFilter(Log4jFilter.class, itemMap, globalMap));
                         break;
                     case "log4j2":
-                        proxyFilters.add(DruidLogConfigUtil.initFilter(Log4j2Filter.class, dataSourceProperty.getDruid().getLog4j2(), gConfig.getLog4j2()));
+                        proxyFilters.add(DruidLogConfigUtil.initFilter(Log4j2Filter.class, itemMap, globalMap));
                         break;
                     default:
                         log.warn("dynamic-datasource current not support [{}]", filter);
                 }
             }
         }
-        if (this.applicationContext != null) {
-            for (String filterId : gConfig.getProxyFilters()) {
-                proxyFilters.add(this.applicationContext.getBean(filterId, Filter.class));
-            }
-        }
+//        if (this.applicationContext != null) {
+//            for (String filterId : gConfig.getProxyFilters()) {
+//                proxyFilters.add(this.applicationContext.getBean(filterId, Filter.class));
+//            }
+//        }
         return proxyFilters;
-    }
-
-    private void setParam(DruidDataSource dataSource, DruidConfig config) {
-        String defaultCatalog = config.getDefaultCatalog() == null ? gConfig.getDefaultCatalog() : config.getDefaultCatalog();
-        if (defaultCatalog != null) {
-            dataSource.setDefaultCatalog(defaultCatalog);
-        }
-        Boolean defaultAutoCommit = config.getDefaultAutoCommit() == null ? gConfig.getDefaultAutoCommit() : config.getDefaultAutoCommit();
-        if (defaultAutoCommit != null && !defaultAutoCommit) {
-            dataSource.setDefaultAutoCommit(false);
-        }
-        Boolean defaultReadOnly = config.getDefaultReadOnly() == null ? gConfig.getDefaultReadOnly() : config.getDefaultReadOnly();
-        if (defaultReadOnly != null) {
-            dataSource.setDefaultReadOnly(defaultReadOnly);
-        }
-        Integer defaultTransactionIsolation = config.getDefaultTransactionIsolation() == null ? gConfig.getDefaultTransactionIsolation() : config.getDefaultTransactionIsolation();
-        if (defaultTransactionIsolation != null) {
-            dataSource.setDefaultTransactionIsolation(defaultTransactionIsolation);
-        }
-
-        Boolean testOnReturn = config.getTestOnReturn() == null ? gConfig.getTestOnReturn() : config.getTestOnReturn();
-        if (testOnReturn != null && testOnReturn) {
-            dataSource.setTestOnReturn(true);
-        }
-        Integer validationQueryTimeout =
-                config.getValidationQueryTimeout() == null ? gConfig.getValidationQueryTimeout() : config.getValidationQueryTimeout();
-        if (validationQueryTimeout != null && !validationQueryTimeout.equals(-1)) {
-            dataSource.setValidationQueryTimeout(validationQueryTimeout);
-        }
-
-        Boolean sharePreparedStatements =
-                config.getSharePreparedStatements() == null ? gConfig.getSharePreparedStatements() : config.getSharePreparedStatements();
-        if (sharePreparedStatements != null && sharePreparedStatements) {
-            dataSource.setSharePreparedStatements(true);
-        }
-        Integer connectionErrorRetryAttempts =
-                config.getConnectionErrorRetryAttempts() == null ? gConfig.getConnectionErrorRetryAttempts()
-                        : config.getConnectionErrorRetryAttempts();
-        if (connectionErrorRetryAttempts != null && !connectionErrorRetryAttempts.equals(1)) {
-            dataSource.setConnectionErrorRetryAttempts(connectionErrorRetryAttempts);
-        }
-        Boolean breakAfterAcquireFailure =
-                config.getBreakAfterAcquireFailure() == null ? gConfig.getBreakAfterAcquireFailure() : config.getBreakAfterAcquireFailure();
-        if (breakAfterAcquireFailure != null && breakAfterAcquireFailure) {
-            dataSource.setBreakAfterAcquireFailure(true);
-        }
-
-        Integer timeout = config.getRemoveAbandonedTimeoutMillis() == null ? gConfig.getRemoveAbandonedTimeoutMillis()
-                : config.getRemoveAbandonedTimeoutMillis();
-        if (timeout != null) {
-            dataSource.setRemoveAbandonedTimeoutMillis(timeout);
-        }
-
-        Boolean abandoned = config.getRemoveAbandoned() == null ? gConfig.getRemoveAbandoned() : config.getRemoveAbandoned();
-        if (abandoned != null) {
-            dataSource.setRemoveAbandoned(abandoned);
-        }
-
-        Boolean logAbandoned = config.getLogAbandoned() == null ? gConfig.getLogAbandoned() : config.getLogAbandoned();
-        if (logAbandoned != null) {
-            dataSource.setLogAbandoned(logAbandoned);
-        }
-
-        Integer queryTimeOut = config.getQueryTimeout() == null ? gConfig.getQueryTimeout() : config.getQueryTimeout();
-        if (queryTimeOut != null) {
-            dataSource.setQueryTimeout(queryTimeOut);
-        }
-
-        Integer transactionQueryTimeout =
-                config.getTransactionQueryTimeout() == null ? gConfig.getTransactionQueryTimeout() : config.getTransactionQueryTimeout();
-        if (transactionQueryTimeout != null) {
-            dataSource.setTransactionQueryTimeout(transactionQueryTimeout);
-        }
     }
 
     @Override
     public boolean support(DataSourceProperty dataSourceProperty) {
         Class<? extends DataSource> type = dataSourceProperty.getType();
         return type == null || DRUID_DATASOURCE.equals(type.getName());
-    }
-
-    @Override
-    public void afterPropertiesSet() throws Exception {
-        gConfig = properties.getDruid();
     }
 }

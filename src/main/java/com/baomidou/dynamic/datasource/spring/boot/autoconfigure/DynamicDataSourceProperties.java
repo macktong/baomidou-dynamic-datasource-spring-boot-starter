@@ -18,7 +18,6 @@ package com.baomidou.dynamic.datasource.spring.boot.autoconfigure;
 import com.baomidou.dynamic.datasource.enums.SeataMode;
 import com.baomidou.dynamic.datasource.spring.boot.autoconfigure.beecp.BeeCpConfig;
 import com.baomidou.dynamic.datasource.spring.boot.autoconfigure.dbcp2.Dbcp2Config;
-import com.baomidou.dynamic.datasource.spring.boot.autoconfigure.druid.DruidConfig;
 import com.baomidou.dynamic.datasource.spring.boot.autoconfigure.hikari.HikariCpConfig;
 import com.baomidou.dynamic.datasource.strategy.DynamicDataSourceStrategy;
 import com.baomidou.dynamic.datasource.strategy.LoadBalanceDynamicDataSourceStrategy;
@@ -30,6 +29,7 @@ import org.springframework.boot.autoconfigure.jdbc.DataSourceProperties;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.boot.context.properties.NestedConfigurationProperty;
 
+import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.Map;
 
@@ -84,11 +84,8 @@ public class DynamicDataSourceProperties {
      * 多数据源选择算法clazz，默认负载均衡算法
      */
     private Class<? extends DynamicDataSourceStrategy> strategy = LoadBalanceDynamicDataSourceStrategy.class;
-    /**
-     * Druid全局参数配置
-     */
-    @NestedConfigurationProperty
-    private DruidConfig druid = new DruidConfig();
+
+    private Map<String, Object> druid = new HashMap<>();
     /**
      * HikariCp全局参数配置
      */
