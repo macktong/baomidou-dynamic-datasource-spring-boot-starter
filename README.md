@@ -151,4 +151,156 @@ public class UserServiceImpl implements UserService {
     return  jdbcTemplate.queryForList("select * from user where age >10");
   }
 }
-```
+spring:
+  profiles: dev
+  autoconfigure:
+    exclude: com.alibaba.druid.spring.boot.autoconfigure.DruidDataSourceAutoConfigure
+  datasource:
+    dynamic:
+      druid:
+        initial-size: 10
+        # 初始化大小，最小，最大
+        min-idle: 20
+        maxActive: 500
+        # 配置获取连接等待超时的时间
+        maxWait: 60000
+        # 配置间隔多久才进行一次检测，检测需要关闭的空闲连接，单位是毫秒
+        timeBetweenEvictionRunsMillis: 60000
+        # 配置一个连接在池中最小生存的时间，单位是毫秒
+        minEvictableIdleTimeMillis: 300000
+        testWhileIdle: true
+        testOnBorrow: true
+        validation-query: SELECT 1
+        testOnReturn: false
+        # 打开PSCache，并且指定每个连接上PSCache的大小
+        poolPreparedStatements: true
+        maxPoolPreparedStatementPerConnectionSize: 20
+        filters: stat,wall
+        filter:
+          wall:
+            config:
+              multi-statement-allow: true
+              none-base-statement-allow: true
+            enabled: true
+        # 配置DruidStatFilter
+        web-stat-filter:
+          enabled: true
+          url-pattern: "/*"
+          exclusions: "*.js,*.gif,*.jpg,*.bmp,*.png,*.css,*.ico,/druid/*"
+        # 配置DruidStatViewServlet
+        stat-view-servlet:
+          enabled: true
+          url-pattern: "/druid/*"
+          # IP白名单(没有配置或者为空，则允许所有访问)
+          allow: #127.0.0.1,192.168.163.1
+          # IP黑名单 (存在共同时，deny优先于allow)
+          deny: #192.168.1.73
+          #  禁用HTML页面上的“Reset All”功能
+          reset-enable: false
+          # 登录名
+          login-username: admin
+          # 登录密码
+
+          login-password: 111111
+        query-timeout: 36000
+      primary: master
+      strict: false
+      datasource:
+        master:
+          url: jdbc:postgresql://x.xx.xx.xx:5432/x
+          username: xxxx
+          password: xxxx
+          driver-class-name: org.postgresql.Driver
+        db1:
+          url: jdbc:mysql://x.x.x.x:3306/x?useUnicode=true&characterEncoding=utf-8
+          username: xx
+          password: xx
+          driver-class-name: com.mysql.cj.jdbc.Driver
+        db2:
+          url: jdbc:mysql://x.x.x.x:3306/x?useUnicode=true&characterEncoding=utf-8
+          username: xx
+          password: xx
+          driver-class-name: com.mysql.cj.jdbc.Driver
+        db3:
+          url: jdbc:mysql://xx.xx.xx.xx:3306/xx?useUnicode=true&characterEncoding=utf-8
+          username: xxx
+          password: xxx
+          driver-class-name: com.mysql.cj.jdbc.Driver
+          
+          
+@DS("db1")
+
+import com.baomidou.dynamic.datasource.annotation.DS;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.stereotype.Service;
+@Service
+public class xxxxServiceImpl implements DfsGantryTransactionService {
+    @Autowired
+    xxxxDao xxxxDao;
+
+    @Override
+    @DS("db1")
+    public Listxxxx> select() {
+        return xxxxDao.selectList();
+    }
+}
+@DS("#dataBaseName")//使用spel从参数获取
+public List selectSpelByKey(String dataBaseName) {
+    return userMapper.selectUsers();
+}
+三、动态切换(建议方式）
+可以根据传入参数(配置文件配置的db1,db2,db3)动态切换数据源
+@DS("#session.tenantName")//从session获取
+    public List selectSpelBySession() {
+        return userMapper.selectUsers();
+    }
+
+    @DS("#header.tenantName")//从header获取
+    public List selectSpelByHeader() {
+        return userMapper.selectUsers();
+    }
+
+    @DS("#tenantName")//使用spel从参数获取，即租户ID
+    public List selectSpelByKey(String tenantName) {
+        return userMapper.selectUsers();
+    }
+
+    @DS("#user.tenantName")//使用spel从复杂参数获取其某个属性
+    public List selecSpelByTenant(User user) {
+        return userMapper.selectUsers();
+    }
+}
+四、加密配置数据库账号密码
+public class Demo {
+
+    public static void main(String[] args) throws Exception {
+        String password = "123456";
+        //使用默认的publicKey ，建议还是使用下面的自定义
+        String encodePassword = CryptoUtils.encrypt(password);
+        System.out.println(encodePassword);
+    }
+
+        //自定义publicKey
+    public static void main(String[] args) throws Exception {
+        String[] arr = CryptoUtils.genKeyPair(512);
+        System.out.println("privateKey:  " + arr[0]);
+        System.out.println("publicKey:  " + arr[1]);
+        System.out.println("url:  " + CryptoUtils.encrypt(arr[0], "jdbc:mysql://127.0.0.1:3306/order"));
+        System.out.println("username:  " + CryptoUtils.encrypt(arr[0], "root"));
+        System.out.println("password:  " + CryptoUtils.encrypt(arr[0], "123456"));
+    }
+}
+五、手动切换数据源
+直接使用DynamicDataSourceContextHolder进行切换。
+@Service
+public class UserServiceImpl implements UserService {
+
+  @Autowired
+  private JdbcTemplate jdbcTemplate;
+
+  public List selectAll() {
+    DynamicDataSourceContextHolder.push("slave");//手动切换
+    return  jdbcTemplate.queryForList("select * from user");
+  }
+ 
+}
